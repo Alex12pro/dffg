@@ -4,5 +4,7 @@
       "source": "/rps",
       "destination": "/rps.html"
     }
-  ]
+  ],
+  "cleanUrls": true,
+  "trailingSlash": false
 }
