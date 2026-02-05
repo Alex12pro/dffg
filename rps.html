@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Ball Bouncer — Rock Paper Scissors</title>
+<style>
+body{margin:0;font-family:system-ui;background:#0b1220;color:#e8f0ff}
+.wrap{max-width:900px;margin:40px auto;padding:24px}
+.card{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:18px;padding:20px}
+.h{font-size:34px;font-weight:900;background:linear-gradient(135deg,#38bdf8,#22c55e);-webkit-background-clip:text;color:transparent}
+.btn{padding:12px 16px;border-radius:14px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.08);color:#fff;cursor:pointer;font-weight:800}
+.row{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}
+input{padding:12px;border-radius:14px;border:1px solid rgba(255,255,255,.2);background:rgba(0,0,0,.3);color:#fff}
+.result{margin-top:16px;font-weight:900}
+.small{opacity:.7;margin-top:6px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    <div class="h">Rock Paper Scissors</div>
+    <p>Bet balls and try your luck. Win = <b>2× your bet</b>.</p>
+    <div class="row">
+      <input id="bet" type="number" min="1" value="1000"/>
+      <button class="btn" onclick="play('rock')">Rock</button>
+      <button class="btn" onclick="play('paper')">Paper</button>
+      <button class="btn" onclick="play('scissors')">Scissors</button>
+      <button class="btn" onclick="goBack()">Back to Game</button>
+    </div>
+    <div class="small" id="bal"></div><div class="small" id="hint" style="opacity:.6"></div>
+    <div class="result" id="out"></div>
+  </div>
+</div>
+
+<script>
+const opts = ['rock','paper','scissors'];
+
+function goBack(){
+  if (location.protocol === 'file:') location.href = 'index.html';
+  else location.href = '/';
+}
+function parseJSON(v){ try{ return JSON.parse(v); }catch(e){ return null; } }
+
+function getSaveKey(){
+  try{
+    const k = localStorage.getItem('__ball_game_save_key');
+    if (k) return k;
+  }catch(e){}
+  return null;
+}
+
+// Load the correct state object using the game's saved KEY.
+// Falls back to scanning if the key isn't available.
+function findState(){
+  const key = getSaveKey();
+  if (key){
+    const v = parseJSON(localStorage.getItem(key));
+    if (v && typeof v === 'object') return { key, obj: v };
+  }
+
+  // fallback scan
+  let best = null;
+  for (let i=0;i<localStorage.length;i++){
+    const k = localStorage.key(i);
+    const v = parseJSON(localStorage.getItem(k));
+    if (!v || typeof v !== 'object') continue;
+    const hasMoney = (typeof v.money === 'number');
+    const hasBalls = (typeof v.balls === 'number');
+    if (!hasMoney && !hasBalls) continue;
+    const cur = hasMoney ? v.money : v.balls;
+    const score = (cur||0) + (v.rebirths||0)*1000000 + (v.totalBounces||0) + (v.totalClicks||0);
+    if (!best || score > best.score) best = { key:k, obj:v, score:score };
+  }
+  if (best) return best;
+  return { key:'state', obj:{ money:0 } };
+}
+
+function currencyField(s){
+  if (typeof s.money === 'number') return 'money';
+  if (typeof s.balls === 'number') return 'balls';
+  // default to money
+  s.money = Number(s.money)||0;
+  return 'money';
+}
+
+function loadState(){
+  const found = findState();
+  const s = found.obj || {};
+  s.__key = found.key;
+  s.__field = currencyField(s);
+  return s;
+}
+function saveState(s){
+  const key = s.__key || getSaveKey() || 'state';
+  const copy = Object.assign({}, s);
+  delete copy.__key;
+  delete copy.__field;
+  localStorage.setItem(key, JSON.stringify(copy));
+}
+
+function getBalance(s){
+  const f = s.__field || currencyField(s);
+  return Math.floor(Number(s[f] || 0));
+}
+function setBalance(s, val){
+  const f = s.__field || currencyField(s);
+  s[f] = val;
+}
+
+function updateBal(){
+  const s = loadState();
+  const bal = getBalance(s);
+  document.getElementById('bal').textContent = "Your balls: " + bal.toLocaleString();
+  return bal;
+}
+
+function clampBet(){
+  const s = loadState();
+  const bal = getBalance(s);
+  let bet = Math.floor(+document.getElementById('bet').value || 0);
+  if (bet < 1) bet = 1;
+  if (bet > bal) bet = bal;
+  document.getElementById('bet').value = bet;
+  return { bet, bal };
+}
+
+function play(choice){
+  const state = loadState();
+  const curBal = getBalance(state);
+
+  const { bet, bal } = clampBet();
+  if (bal <= 0 || bet <= 0){
+    document.getElementById('out').textContent = "You have no balls to bet.";
+    updateBal();
+    return;
+  }
+
+  const ai = opts[Math.floor(Math.random()*3)];
+  let res = 'draw';
+  if (choice !== ai){
+    const win =
+      (choice==='rock' && ai==='scissors') ||
+      (choice==='paper' && ai==='rock') ||
+      (choice==='scissors' && ai==='paper');
+    res = win ? 'win' : 'lose';
+  }
+
+  let newBal = curBal;
+  if (res === 'win') newBal = curBal + bet; // net +bet (double your bet effect)
+  if (res === 'lose') newBal = Math.max(0, curBal - bet);
+
+  setBalance(state, newBal);
+  saveState(state);
+  updateBal();
+
+  let suffix = "DRAW.";
+  if (res === 'win') suffix = "WIN! (+" + bet.toLocaleString() + ")";
+  if (res === 'lose') suffix = "LOSE. (-" + bet.toLocaleString() + ")";
+  document.getElementById('out').textContent =
+    "You chose " + choice.toUpperCase() + ", AI chose " + ai.toUpperCase() + ". " + suffix;
+}
+
+document.getElementById('bet').addEventListener('input', clampBet);
+updateBal();
+</script>
+
+</body>
+</html>
